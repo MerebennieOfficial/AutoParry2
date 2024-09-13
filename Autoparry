@@ -1,0 +1,110 @@
+-- Global Parry Toggle
+getgenv().autoparry = false
+
+-- Services
+local VirtualManager = game:GetService("VirtualInputManager")
+local Players = game:GetService('Players')
+local Player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local RunService = game:GetService('RunService')
+local UserInputService = game:GetService("UserInputService")
+
+-- Load Parry Helper
+local parry_helper = loadstring(game:HttpGet("https://raw.githubusercontent.com/TripleScript/TripleHub/main/helper_.lua"))()
+
+-- Constants for Timing
+local DISTANCE_THRESHOLD = 5
+local TIME_THRESHOLD = 0.55
+local MOUSE_DELAY = 0.01
+local PARRY_INTERVAL = 0.05 -- 50 milliseconds
+
+-- UI Setup
+local ScreenGui = Instance.new("ScreenGui")
+local ParryFrame = Instance.new("Frame")
+local ToggleButton = Instance.new("TextButton")
+
+-- Mobile Compatibility
+ScreenGui.Parent = game:GetService("CoreGui")
+
+-- UI Styling
+ParryFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+ParryFrame.BorderSizePixel = 2
+ParryFrame.BorderColor3 = Color3.fromRGB(255, 255, 255)
+ParryFrame.Position = UDim2.new(0.05, 0, 0.05, 0)
+ParryFrame.Size = UDim2.new(0, 150, 0, 50)
+ParryFrame.Active = true
+ParryFrame.Draggable = true
+ParryFrame.Parent = ScreenGui
+
+ToggleButton.Text = "Auto Parry: OFF"
+ToggleButton.Size = UDim2.new(1, 0, 1, 0)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+ToggleButton.Parent = ParryFrame
+
+local isParrying = false
+
+-- Toggle Parry Functionality
+local function ToggleParry()
+    getgenv().autoparry = not getgenv().autoparry
+    if getgenv().autoparry then
+        ToggleButton.Text = "Auto Parry: ON"
+    else
+        ToggleButton.Text = "Auto Parry: OFF"
+    end
+end
+
+ToggleButton.MouseButton1Click:Connect(ToggleParry)
+
+-- Parry Logic
+local function canParry(par)
+    if not par then return false end
+    
+    local velocity = par.AssemblyLinearVelocity
+    if par:FindFirstChild('zoomies') then 
+        velocity = par.zoomies.VectorVelocity
+    end
+    
+    local ballPosition = par.Position
+    local playerPosition = Player.Character.PrimaryPart.Position
+    
+    -- Vector calculations
+    local directionToPlayer = (playerPosition - ballPosition).Unit
+    local distance = Player:DistanceFromCharacter(ballPosition)
+    local dotProduct = directionToPlayer:Dot(velocity.Unit)
+    local speed = velocity.Magnitude
+    
+    -- Check if ball is coming towards player
+    if dotProduct > 0 then
+        local adjustedDistance = distance - DISTANCE_THRESHOLD
+        local timeToImpact = adjustedDistance / speed
+        
+        -- Validate if parry is possible
+        return parry_helper.IsPlayerTarget(par) and timeToImpact <= TIME_THRESHOLD
+    end
+    
+    return false
+end
+
+-- Auto Parry Loop
+task.spawn(function()
+    while true do
+        if getgenv().autoparry then
+            local target = parry_helper.FindTargetBall()
+            if canParry(target) and not isParrying then
+                VirtualManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                task.wait(MOUSE_DELAY)
+                isParrying = true
+            else
+                isParrying = false
+            end
+        end
+        task.wait(PARRY_INTERVAL) -- Wait 50ms before next check
+    end
+end)
+
+-- Ensure Mobile Compatibility by Supporting Touch Input
+UserInputService.TouchTap:Connect(function(touchPositions, processed)
+    if not processed then
+        ToggleParry()  -- Allows toggling via touch on mobile
+    end
+end)
